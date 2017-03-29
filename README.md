@@ -8,6 +8,6 @@
 
 ## Run
 
-`runGithub("GraysonCollege", "enrollmentProjection")`
+`runGitHub("enrollmentProjection", "GraysonCollege")`
 
 
