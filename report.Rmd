@@ -1,0 +1,307 @@
+---
+title: "Projections for Following Semesters "
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+
+## Years
+
+Years chosen: `r input$years[1]` to `r input$years[2]`.
+
+## Projection Target
+
+Target variable chosen: `r input$target`.
+
+## Forcast Model
+
+Forecast model chosen: `r input$model`.
+
+## Projections Graph
+```{r plot, echo=FALSE, fig.width=8, fig.height=6}
+#---------------------------------------------------------#
+# the following code is the same as renderPlot in server.R
+# Update it when updating server.R, just copy and paste.
+#---------------------------------------------------------#
+
+
+# obtain desired and preed data
+desired_dat = grabData()$desiredData
+pred_dat = grabData()$predData
+
+cols = c("0" = "blue", "1" = "red")
+
+# choose prediction variable
+
+if (input$target == "Enrollment"){
+    pred_var = "enrollment"
+    lo = 1000
+    hi = 6000
+} else if (input$target == "Attempted Credits") {
+    pred_var = "credits"
+    lo = 10000
+    hi = 65000
+} else{
+    pred_var = "hours"
+    lo = 400000
+    hi = 1350000
+}
+
+
+if (input$model == "Basic Linear Regression"){
+    formula = paste0(pred_var, " ~ year + unemployment_rate_last_year + semesterFall")
+    
+    fit = lm(formula, data = desired_dat)
+    
+    # make predictions on desired data to see the performance
+    desired_dat$prejection_LR = fit$fitted.values
+    
+    # make predictions for the following semesters
+    pred_dat$prejection_LR = predict.lm(fit, newdata = pred_dat) 
+    
+    # merger two data sets
+    merge_dat = rbind(desired_dat %>% select(year, semesterFall, unemployment_rate_last_year, prejection_LR), 
+                      pred_dat)
+    
+    # making plots again
+    plt = ggplot(aes(x = year, y = prejection_LR), data = merge_dat) +
+        geom_point(aes(shape = as.factor(semesterFall))) + 
+        scale_x_continuous(breaks = seq(min(merge_dat$year), max(merge_dat$year), 1),
+                           labels = seq(min(merge_dat$year), max(merge_dat$year), 1)) + 
+        scale_shape_manual(name = "Semester\n Projections",
+                           values = c("0" = 0, "1" = 2),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) + 
+        geom_point(aes(x = year, y = get(pred_var), color = as.factor(semesterFall)), size = 2, data = desired_dat) + 
+        scale_color_manual(name = "Semester",
+                           values = c("0" = "red", "1" = "blue"),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) +
+        xlab("Year") + 
+        ylab(input$target) + 
+        ylim(c(lo, hi)) + 
+        myTheme
+    print(plt)
+} else if(input$model == "Prior Moving Average (3yrs)"){
+    # average 3 previous projection data
+    # projection separatedly
+    shift = 3
+    
+    # projection for Spring
+    actual_spring = desired_dat %>% filter(semesterFall == 0) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_spring = pred_dat %>% filter(semesterFall == 0) %>%
+        select(year, semesterFall)
+                
+    actual_s = pma(actual_spring, pred_spring, pred_var, shift)[[1]] 
+    pred_s = pma(actual_spring, pred_spring, pred_var, shift)[[2]] # only return 3 variables
+    
+    # projection for Fall 
+    actual_fall = desired_dat %>% filter(semesterFall == 1) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_fall = pred_dat %>% filter(semesterFall == 1) %>%
+        select(year, semesterFall)
+    
+    actual_f = pma(actual_fall, pred_fall, pred_var, shift)[[1]] 
+    pred_f = pma(actual_fall, pred_fall, pred_var, shift)[[2]] # only return 3 variables
+    
+    
+    actual = rbind(actual_s, actual_f)
+    preds = rbind(pred_s, pred_f)
+    
+    # merger two data sets
+    merge_dat = rbind(actual, preds)
+    
+    # making plots again
+    plt = ggplot(aes(x = year, y = projection_PMA_3yr), data = merge_dat) +
+        geom_point(aes(shape = as.factor(semesterFall))) + 
+        scale_x_continuous(breaks = seq(min(merge_dat$year), max(merge_dat$year), 1),
+                           labels = seq(min(merge_dat$year), max(merge_dat$year), 1)) + 
+        scale_shape_manual(name = "Semester\n Projections",
+                           values = c("0" = 0, "1" = 2),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) + 
+        geom_point(aes(x = year, y = get(pred_var), color = as.factor(semesterFall)), size = 2, data = desired_dat) + 
+        scale_color_manual(name = "Semester",
+                           values = c("0" = "red", "1" = "blue"),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) +
+        xlab("Year") + 
+        ylab(input$target) + 
+        ylim(c(lo, hi)) + 
+        myTheme
+    print(plt)
+    
+} else if(input$model == "Prior Moving Average (5yrs)"){
+    # average 5 previous projection data
+    shift = 5
+    
+    # projection for Spring
+    actual_spring = desired_dat %>% filter(semesterFall == 0) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_spring = pred_dat %>% filter(semesterFall == 0) %>%
+        select(year, semesterFall)
+    
+    actual_s = pma(actual_spring, pred_spring, pred_var, shift)[[1]] 
+    pred_s = pma(actual_spring, pred_spring, pred_var, shift)[[2]] # only return 3 variables
+    
+    # projection for Fall 
+    actual_fall = desired_dat %>% filter(semesterFall == 1) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_fall = pred_dat %>% filter(semesterFall == 1) %>%
+        select(year, semesterFall)
+    
+    actual_f = pma(actual_fall, pred_fall, pred_var, shift)[[1]] 
+    pred_f = pma(actual_fall, pred_fall, pred_var, shift)[[2]] # only return 3 variables
+    
+    
+    actual = rbind(actual_s, actual_f)
+    preds = rbind(pred_s, pred_f)
+    
+    # merger two data sets
+    merge_dat = rbind(actual, preds)
+    
+    # making plots again
+    plt = ggplot(aes(x = year, y = projection_PMA_5yr), data = merge_dat) +
+        geom_point(aes(shape = as.factor(semesterFall))) + 
+        scale_x_continuous(breaks = seq(min(merge_dat$year), max(merge_dat$year), 1),
+                           labels = seq(min(merge_dat$year), max(merge_dat$year), 1)) + 
+        scale_shape_manual(name = "Semester\n Projections",
+                           values = c("0" = 0, "1" = 2),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) + 
+        geom_point(aes(x = year, y = get(pred_var), color = as.factor(semesterFall)), size = 2, data = desired_dat) + 
+        scale_color_manual(name = "Semester",
+                           values = c("0" = "red", "1" = "blue"),
+                           breaks = c("0", "1"),
+                           labels = c("Spring", "Fall")) +
+        xlab("Year") + 
+        ylab(input$target) + 
+        ylim(c(lo, hi)) + 
+        myTheme
+    print(plt)
+}
+```
+
+
+## Projections Output
+
+```{r fun, echo=FALSE}
+semester_fun <- function(x){
+    if (x == 1){
+        return("Fall")
+    } else {
+        return("Spring")
+    }
+}
+
+```
+
+
+```{r model, echo=FALSE, collapse=TRUE}
+#--------------------------------------------------------------#
+# the following code is the same as renderDataTable in server.R
+# Update it when updating server.R, just copy and paste.
+#--------------------------------------------------------------#
+
+# obtain desired and preed data
+desired_dat = grabData()$desiredData
+pred_dat = grabData()$predData
+
+# choose prediction variable
+
+if (input$target == "Enrollment"){
+    pred_var = "enrollment"
+    lo = 1000
+    hi = 6000
+} else if (input$target == "Attempted Credits") {
+    pred_var = "credits"
+    lo = 10000
+    hi = 65000
+} else{
+    pred_var = "hours"
+    lo = 500000
+    hi = 1500000
+}
+
+if (input$model == "Basic Linear Regression"){
+    formula = paste0(pred_var, " ~ year + unemployment_rate_last_year + semesterFall")
+    
+    fit = lm(formula, data = desired_dat)
+    
+    # make predictions on desired data to see the performance
+    desired_dat$prejection_LR = fit$fitted.values
+    
+    # make predictions for the following semesters
+    pred_dat$prejection_LR = predict.lm(fit, newdata = pred_dat) 
+    
+    # merger two data sets
+    merge_dat = rbind(desired_dat %>% select(year, semesterFall, unemployment_rate_last_year, prejection_LR), 
+                      pred_dat)
+    
+    # print the projections
+    print(pred_dat %>% select(-unemployment_rate_last_year))
+    
+} else if(input$model == "Prior Moving Average (3yrs)"){
+    # average 3 previous projection data
+    shift = 3
+    
+    # projection for Spring
+    actual_spring = desired_dat %>% filter(semesterFall == 0) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_spring = pred_dat %>% filter(semesterFall == 0) %>%
+        select(year, semesterFall)
+    
+    actual_s = pma(actual_spring, pred_spring, pred_var, shift)[[1]] 
+    pred_s = pma(actual_spring, pred_spring, pred_var, shift)[[2]] # only return 3 variables
+    
+    # projection for Fall 
+    actual_fall = desired_dat %>% filter(semesterFall == 1) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_fall = pred_dat %>% filter(semesterFall == 1) %>%
+        select(year, semesterFall)
+    
+    actual_f = pma(actual_fall, pred_fall, pred_var, shift)[[1]] 
+    pred_f = pma(actual_fall, pred_fall, pred_var, shift)[[2]] # only return 3 variables
+    
+    
+    actual = rbind(actual_s, actual_f)
+    preds = rbind(pred_s, pred_f)
+    print(preds)
+    
+} else if(input$model == "Prior Moving Average (5yrs)"){
+    # average 5 previous projection data
+    shift = 5
+    
+    # projection for Spring
+    actual_spring = desired_dat %>% filter(semesterFall == 0) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_spring = pred_dat %>% filter(semesterFall == 0) %>%
+        select(year, semesterFall)
+    
+    actual_s = pma(actual_spring, pred_spring, pred_var, shift)[[1]] 
+    pred_s = pma(actual_spring, pred_spring, pred_var, shift)[[2]] # only return 3 variables
+    
+    # projection for Fall 
+    actual_fall = desired_dat %>% filter(semesterFall == 1) %>% 
+        select(year, semesterFall, contains(pred_var))
+    pred_fall = pred_dat %>% filter(semesterFall == 1) %>%
+        select(year, semesterFall)
+    
+    actual_f = pma(actual_fall, pred_fall, pred_var, shift)[[1]] 
+    pred_f = pma(actual_fall, pred_fall, pred_var, shift)[[2]] # only return 3 variables
+    
+    
+    actual = rbind(actual_s, actual_f)
+    preds = rbind(pred_s, pred_f)
+    print(preds)
+}
+```
+
+The projection of `r input$target` for `r pred_dat[1, 'year']` `r semester_fun(pred_dat[1, 'semesterFall'])` is `r round(pred_dat[1, names(pred_dat) %in% c("projection_PMA_5yr", "projection_PMA_3yr", "prejection_LR")],0)`. 
+
+Note: variable _semesterFall_ is an indicator for Fall semester. 1 indicates for Fall semester, 0 for Spring semester.
+
+
+
+
+
